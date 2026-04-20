@@ -47,7 +47,6 @@ For streaming use cases, call `synthesize()` in a thread pool — the GIL releas
 ## Project structure
 
 ```
-├── main.py                         # public Python API
 ├── tts_engine.cpython-312-*.so    # built by build.sh, gitignored
 │
 ├── src/
