@@ -1,0 +1,29 @@
+main.py
+
+# Compiled Python extension
+*.so
+*.pyd
+
+# Test audio output files
+*.opus
+*.wav
+*.mp3
+
+# CMake build artifacts
+build/out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Dependencies (local copies)
+dependencies/
+
+# VS Code
+.vscode/
