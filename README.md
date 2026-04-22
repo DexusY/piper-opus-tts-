@@ -1,12 +1,12 @@
 # piper-opus-tts
 
-In-memory text-to-speech engine built for **real-time and latency-sensitive systems**. Synthesizes speech directly to OGG/Opus bytes inside a C++ module — no temp files, no subprocess calls, no intermediate WAV handed to Python.
+TTS engine that synthesizes directly to OGG/Opus bytes in C++. No temp files, no subprocesses, no WAV handed off to Python — text in, streamable audio out.
 
-Designed to be dropped into WebSocket servers, VoIP pipelines, announcement systems, and any application where audio must be ready to stream within a consistent, tight latency budget.
+Works well as a drop-in for WebSocket servers, VoIP stacks, and announcement systems where latency actually matters.
 
 ---
 
-## How it works
+## Internals
 
 ```
 text + voice params
@@ -26,21 +26,19 @@ text + voice params
         OGG/Opus bytes              returned to Python as bytes — ready to stream
 ```
 
-Everything from phonemization to Opus encoding happens in a single C++ call. The GIL is released during inference so multiple threads synthesize concurrently without blocking each other.
+One C++ call covers phonemization through Opus encoding. The GIL is released during inference so threads genuinely run in parallel.
 
 ---
 
-## Why this matters for real-time systems
+## Latency
 
-| Approach | Latency per call | Notes |
+| Approach | Per call | Notes |
 |---|---|---|
-| Python `piper-tts` + `pydub` + ffmpeg subprocess | ~300–700 ms | Subprocess fork + pipe + temp file per call |
-| C++ piper + Python subprocess to ffmpeg | ~200–500 ms | No temp file but subprocess overhead remains |
-| **This engine** | **~150–400 ms** | Single C++ call, no subprocess, no disk I/O |
+| Python `piper-tts` + `pydub` + ffmpeg subprocess | ~300–700 ms | subprocess fork + pipe + temp file each time |
+| C++ piper + Python subprocess to ffmpeg | ~200–500 ms | no temp file but subprocess overhead stays |
+| **This engine** | **~150–400 ms** | single C++ call, no subprocess, no disk I/O |
 
-The dominant cost is ONNX neural network inference, which scales with text length. Everything else (phonemization, resampling, Opus encoding) adds less than 10 ms total.
-
-For streaming use cases, call `synthesize()` in a thread pool — the GIL release inside the C++ module means Python threads genuinely run in parallel during inference.
+The bottleneck is ONNX inference and it scales with text length. Everything else — phonemization, resampling, Opus encoding — is under 10 ms combined.
 
 ---
 
@@ -81,7 +79,7 @@ For streaming use cases, call `synthesize()` in a thread pool — the GIL releas
 | German | female | `de_DE-eva_k-x_low.onnx` |
 | German | male | `de_DE-thorsten-medium.onnx` |
 
-Voice models are downloaded from [rhasspy/piper-voices on Hugging Face](https://huggingface.co/rhasspy/piper-voices) and placed in `dependencies/`. Each voice requires two files: `.onnx` (model weights) and `.onnx.json` (config).
+Models come from [rhasspy/piper-voices on Hugging Face](https://huggingface.co/rhasspy/piper-voices). Each voice needs two files: `.onnx` (weights) and `.onnx.json` (config). Place both in `dependencies/`.
 
 ---
 
@@ -105,15 +103,9 @@ cd piper-opus-tts
 bash build/build.sh
 ```
 
-`build.sh` handles everything automatically:
-- Clones piper C++ source
-- Downloads pre-built piper-phonemize (headers + runtime libs)
-- Downloads onnxruntime and spdlog headers
-- Compiles `tts_module.cpp` into `tts_engine.cpython-*.so`
+`build.sh` clones piper, pulls pre-built piper-phonemize (headers + runtime libs), downloads onnxruntime and spdlog headers, then compiles `tts_module.cpp` into `tts_engine.cpython-*.so`.
 
 **3. Download voice models**
-
-Place `.onnx` and `.onnx.json` pairs into `dependencies/`. Example for Polish female voice:
 
 ```bash
 BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main"
@@ -158,7 +150,7 @@ Expected output:
 
 ### Windows (via WSL2)
 
-Native Windows is not supported — piper-phonemize is distributed as a Linux x86_64 binary and the build system uses Linux tooling. WSL2 runs the engine at native Linux performance.
+Native Windows isn't supported — piper-phonemize ships as a Linux x86_64 binary and the build tooling is Linux-only. WSL2 runs it at native Linux performance with no overhead.
 
 **1. Install WSL2**
 
@@ -166,9 +158,9 @@ Native Windows is not supported — piper-phonemize is distributed as a Linux x8
 wsl --install
 ```
 
-Restart, then open the Ubuntu terminal that appears.
+Restart, then open the Ubuntu terminal.
 
-**2. Inside WSL2, follow the Linux instructions exactly**
+**2. Follow the Linux instructions inside WSL2**
 
 ```bash
 sudo apt-get update
@@ -179,9 +171,9 @@ cd piper-opus-tts
 bash build/build.sh
 ```
 
-Download voice models and run `python main.py` as described in the Linux section.
+Download voice models and run `python main.py` as above.
 
-**Accessing files from Windows:** your WSL2 home directory is visible in Explorer at `\\wsl$\Ubuntu\home\<username>\`.
+Your WSL2 home is accessible from Explorer at `\\wsl$\Ubuntu\home\<username>\`.
 
 ---
 
@@ -190,10 +182,9 @@ Download voice models and run `python main.py` as described in the Linux section
 ```python
 from main import synthesize
 
-# Minimal — returns OGG/Opus bytes
+# returns OGG/Opus bytes directly
 opus: bytes = synthesize("Hello, world!", language="english", gender="female")
 
-# Stream it directly over a WebSocket, HTTP response, etc.
 await websocket.send(opus)
 ```
 
@@ -209,11 +200,11 @@ await websocket.send(opus)
 | `length_scale` | `float` | `1.0` | Speaking rate — `0.8` faster, `1.3` slower |
 | `bitrate_kbps` | `int` | `24` | Opus bitrate: `16` smallest, `24` default speech quality, `48` transparent |
 
-Returns `bytes` — OGG/Opus audio ready to write to disk or stream over any transport.
+Returns `bytes` — OGG/Opus audio ready to write to disk or push over any transport.
 
 ---
 
-## Example usage (`main.py`)
+## Example (`main.py`)
 
 ```python
 import os
